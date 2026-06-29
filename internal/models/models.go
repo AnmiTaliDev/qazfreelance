@@ -22,11 +22,18 @@ const (
 	ModeList   = "list"
 )
 
+const (
+	SubModeAsk    = ""
+	SubModeGuided = "guided"
+	SubModeFree   = "free"
+)
+
 type User struct {
-	ID         int64
-	TelegramID int64
-	Language   string
-	CreatedAt  time.Time
+	ID             int64
+	TelegramID     int64
+	Language       string
+	DefaultSubMode string
+	CreatedAt      time.Time
 }
 
 type Submission struct {

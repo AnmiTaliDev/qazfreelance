@@ -10,6 +10,7 @@ type Storage interface {
 	GetUserByID(id int64) (*models.User, error)
 	CreateUser(telegramID int64, language string) (*models.User, error)
 	UpdateUserLanguage(telegramID int64, language string) error
+	UpdateUserDefaultSubMode(telegramID int64, mode string) error
 
 	CreateSubmission(sub *models.Submission) (int64, error)
 	GetSubmission(id int64) (*models.Submission, error)

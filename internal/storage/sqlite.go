@@ -65,6 +65,7 @@ func NewSQLite(dbPath string) (*SQLiteStorage, error) {
 	}
 	db.Exec(`ALTER TABLE submissions ADD COLUMN photo_file_id TEXT NOT NULL DEFAULT ''`)
 	db.Exec(`ALTER TABLE submissions ADD COLUMN channel_message_id INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE users ADD COLUMN default_sub_mode TEXT NOT NULL DEFAULT ''`)
 	return &SQLiteStorage{db: db}, nil
 }
 
@@ -74,12 +75,12 @@ func (s *SQLiteStorage) Close() error {
 
 func (s *SQLiteStorage) GetUser(telegramID int64) (*models.User, error) {
 	row := s.db.QueryRow(
-		`SELECT id, telegram_id, language, created_at FROM users WHERE telegram_id = ?`,
+		`SELECT id, telegram_id, language, default_sub_mode, created_at FROM users WHERE telegram_id = ?`,
 		telegramID,
 	)
 	u := &models.User{}
 	var createdAt string
-	err := row.Scan(&u.ID, &u.TelegramID, &u.Language, &createdAt)
+	err := row.Scan(&u.ID, &u.TelegramID, &u.Language, &u.DefaultSubMode, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -92,12 +93,12 @@ func (s *SQLiteStorage) GetUser(telegramID int64) (*models.User, error) {
 
 func (s *SQLiteStorage) GetUserByID(id int64) (*models.User, error) {
 	row := s.db.QueryRow(
-		`SELECT id, telegram_id, language, created_at FROM users WHERE id = ?`,
+		`SELECT id, telegram_id, language, default_sub_mode, created_at FROM users WHERE id = ?`,
 		id,
 	)
 	u := &models.User{}
 	var createdAt string
-	err := row.Scan(&u.ID, &u.TelegramID, &u.Language, &createdAt)
+	err := row.Scan(&u.ID, &u.TelegramID, &u.Language, &u.DefaultSubMode, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -135,6 +136,17 @@ func (s *SQLiteStorage) UpdateUserLanguage(telegramID int64, language string) er
 	)
 	if err != nil {
 		return fmt.Errorf("update user language: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStorage) UpdateUserDefaultSubMode(telegramID int64, mode string) error {
+	_, err := s.db.Exec(
+		`UPDATE users SET default_sub_mode = ? WHERE telegram_id = ?`,
+		mode, telegramID,
+	)
+	if err != nil {
+		return fmt.Errorf("update user default sub mode: %w", err)
 	}
 	return nil
 }

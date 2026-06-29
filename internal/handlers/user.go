@@ -43,6 +43,8 @@ func (h *Handler) handleCommand(msg *tgbotapi.Message) {
 		h.HandleStart(msg)
 	case "mode":
 		h.HandleModeCommand(msg)
+	case "settings":
+		h.HandleSettingsCommand(msg)
 	default:
 		lang := h.getUserLang(msg.From.ID)
 		h.send(msg.Chat.ID, i18n.T(lang, "unknown_command"))
@@ -88,6 +90,7 @@ func (h *Handler) showMainMenu(chatID int64, telegramID int64, lang string) {
 		},
 		{
 			tgbotapi.NewKeyboardButton(i18n.T(lang, "btn_my_submissions")),
+			tgbotapi.NewKeyboardButton(i18n.T(lang, "btn_settings")),
 		},
 	}
 	if h.Config.IsModerator(telegramID) {
@@ -185,15 +188,19 @@ func (h *Handler) handleMessage(msg *tgbotapi.Message) {
 
 	default:
 		if text == i18n.T(lang, "btn_post_order") {
-			h.showSubmissionModeChoice(msg.Chat.ID, lang, models.SubmissionTypeOrder)
+			h.startOrChooseMode(msg.Chat.ID, telegramID, lang, models.SubmissionTypeOrder)
 			return
 		}
 		if text == i18n.T(lang, "btn_advertise") {
-			h.showSubmissionModeChoice(msg.Chat.ID, lang, models.SubmissionTypeResume)
+			h.startOrChooseMode(msg.Chat.ID, telegramID, lang, models.SubmissionTypeResume)
 			return
 		}
 		if text == i18n.T(lang, "btn_my_submissions") {
 			h.showUserSubmissions(msg.Chat.ID, telegramID, lang)
+			return
+		}
+		if text == i18n.T(lang, "btn_settings") {
+			h.sendSettings(msg.Chat.ID, telegramID, lang)
 			return
 		}
 		if h.Config.IsModerator(telegramID) && text == i18n.T(lang, "btn_moderator_menu") {
@@ -219,6 +226,124 @@ func (h *Handler) sendCancelKeyboard(chatID int64, lang, prompt string) {
 		OneTimeKeyboard: true,
 	}
 	h.sendWithKeyboard(chatID, prompt, keyboard)
+}
+
+func (h *Handler) HandleSettingsCommand(msg *tgbotapi.Message) {
+	lang := h.getUserLang(msg.From.ID)
+	h.sendSettings(msg.Chat.ID, msg.From.ID, lang)
+}
+
+func (h *Handler) settingsText(lang string, user *models.User) string {
+	langName := i18n.T(user.Language, "btn_"+user.Language)
+
+	var modeName string
+	switch user.DefaultSubMode {
+	case models.SubModeGuided:
+		modeName = i18n.T(lang, "btn_guided")
+	case models.SubModeFree:
+		modeName = i18n.T(lang, "btn_free_form")
+	default:
+		modeName = i18n.T(lang, "settings_mode_ask")
+	}
+
+	return i18n.T(lang, "settings_header") + "\n\n" +
+		i18n.Tf(lang, "settings_language", langName) + "\n" +
+		i18n.Tf(lang, "settings_sub_mode", modeName)
+}
+
+func (h *Handler) settingsKeyboard(lang string, user *models.User) tgbotapi.InlineKeyboardMarkup {
+	mark := func(active bool, label string) string {
+		if active {
+			return "> " + label
+		}
+		return label
+	}
+
+	langKK := mark(user.Language == "kk", i18n.T("kk", "btn_kk"))
+	langRU := mark(user.Language == "ru", i18n.T("ru", "btn_ru"))
+	langEN := mark(user.Language == "en", i18n.T("en", "btn_en"))
+
+	modeGuided := mark(user.DefaultSubMode == models.SubModeGuided, i18n.T(lang, "btn_guided"))
+	modeFree := mark(user.DefaultSubMode == models.SubModeFree, i18n.T(lang, "btn_free_form"))
+	modeAsk := mark(user.DefaultSubMode == models.SubModeAsk, i18n.T(lang, "settings_mode_ask"))
+
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(langKK, "settings_lang_kk"),
+			tgbotapi.NewInlineKeyboardButtonData(langRU, "settings_lang_ru"),
+			tgbotapi.NewInlineKeyboardButtonData(langEN, "settings_lang_en"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(modeGuided, "settings_mode_guided"),
+			tgbotapi.NewInlineKeyboardButtonData(modeFree, "settings_mode_free"),
+			tgbotapi.NewInlineKeyboardButtonData(modeAsk, "settings_mode_ask"),
+		),
+	)
+}
+
+func (h *Handler) sendSettings(chatID int64, telegramID int64, lang string) {
+	user, err := h.Storage.GetUser(telegramID)
+	if err != nil || user == nil {
+		h.Logger.Error("get user for settings", "telegram_id", telegramID, "error", err)
+		return
+	}
+	text := h.settingsText(lang, user)
+	kb := h.settingsKeyboard(lang, user)
+	h.sendWithInline(chatID, text, kb)
+}
+
+func (h *Handler) editSettings(cb *tgbotapi.CallbackQuery, telegramID int64, lang string) {
+	user, err := h.Storage.GetUser(telegramID)
+	if err != nil || user == nil {
+		h.Logger.Error("get user for settings edit", "telegram_id", telegramID, "error", err)
+		return
+	}
+	text := h.settingsText(lang, user)
+	kb := h.settingsKeyboard(lang, user)
+	edit := tgbotapi.NewEditMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text)
+	edit.ReplyMarkup = &kb
+	if _, err := h.Bot.Send(edit); err != nil {
+		h.Logger.Error("edit settings message", "error", err)
+	}
+}
+
+func (h *Handler) handleSettingsLang(cb *tgbotapi.CallbackQuery, telegramID int64, newLang string) {
+	if err := h.Storage.UpdateUserLanguage(telegramID, newLang); err != nil {
+		h.Logger.Error("update language from settings", "telegram_id", telegramID, "error", err)
+		h.answerCallback(cb.ID, "")
+		return
+	}
+	h.answerCallback(cb.ID, i18n.T(newLang, "settings_saved"))
+	h.editSettings(cb, telegramID, newLang)
+}
+
+func (h *Handler) handleSettingsMode(cb *tgbotapi.CallbackQuery, telegramID int64, lang string, newMode string) {
+	if newMode == "ask" {
+		newMode = models.SubModeAsk
+	}
+	if err := h.Storage.UpdateUserDefaultSubMode(telegramID, newMode); err != nil {
+		h.Logger.Error("update sub mode from settings", "telegram_id", telegramID, "error", err)
+		h.answerCallback(cb.ID, "")
+		return
+	}
+	h.answerCallback(cb.ID, i18n.T(lang, "settings_saved"))
+	h.editSettings(cb, telegramID, lang)
+}
+
+func (h *Handler) startOrChooseMode(chatID int64, telegramID int64, lang string, subType string) {
+	user, err := h.Storage.GetUser(telegramID)
+	if err != nil || user == nil {
+		h.showSubmissionModeChoice(chatID, lang, subType)
+		return
+	}
+	switch user.DefaultSubMode {
+	case models.SubModeGuided:
+		h.startGuidedSubmission(chatID, telegramID, lang, subType)
+	case models.SubModeFree:
+		h.startFreeFormSubmission(chatID, telegramID, lang, subType)
+	default:
+		h.showSubmissionModeChoice(chatID, lang, subType)
+	}
 }
 
 func (h *Handler) showSubmissionModeChoice(chatID int64, lang string, subType string) {
@@ -475,6 +600,18 @@ func (h *Handler) handleCallback(cb *tgbotapi.CallbackQuery) {
 		subType := strings.TrimPrefix(data, "mode_free_")
 		h.answerCallback(cb.ID, "")
 		h.startFreeFormSubmission(chatID, userID, lang, subType)
+
+	case data == "settings":
+		h.answerCallback(cb.ID, "")
+		h.editSettings(cb, userID, lang)
+
+	case strings.HasPrefix(data, "settings_lang_"):
+		newLang := strings.TrimPrefix(data, "settings_lang_")
+		h.handleSettingsLang(cb, userID, newLang)
+
+	case strings.HasPrefix(data, "settings_mode_"):
+		newMode := strings.TrimPrefix(data, "settings_mode_")
+		h.handleSettingsMode(cb, userID, lang, newMode)
 
 	case data == "my_subs":
 		h.answerCallback(cb.ID, "")

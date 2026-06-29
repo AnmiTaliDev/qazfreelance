@@ -248,6 +248,36 @@ var strings = map[string]map[string]string{
 		"ru": "Контакт: %s",
 		"en": "Contact: %s",
 	},
+	"settings_header": {
+		"kk": "Параметрлер",
+		"ru": "Настройки",
+		"en": "Settings",
+	},
+	"settings_language": {
+		"kk": "Тіл: %s",
+		"ru": "Язык: %s",
+		"en": "Language: %s",
+	},
+	"settings_sub_mode": {
+		"kk": "Хабарландыру режимі: %s",
+		"ru": "Режим подачи объявления: %s",
+		"en": "Submission mode: %s",
+	},
+	"settings_mode_ask": {
+		"kk": "Сұрау",
+		"ru": "Спрашивать",
+		"en": "Ask",
+	},
+	"settings_saved": {
+		"kk": "Сакталды.",
+		"ru": "Сохранено.",
+		"en": "Saved.",
+	},
+	"btn_settings": {
+		"kk": "Параметрлер",
+		"ru": "Настройки",
+		"en": "Settings",
+	},
 	"btn_back": {
 		"kk": "Артқа",
 		"ru": "Назад",
